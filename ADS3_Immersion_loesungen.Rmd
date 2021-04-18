@@ -118,24 +118,42 @@ Es findet insbesondere die DSGVO Anwendung.
 
 ### A-04: Bevor die eigentliche Verarbeitung beginnt, sollen die notwendigen Programmbibliotheken aufgerufen/importiert sowie der Datensatz aus der Datei `cs_train.csv` eingelesen und die ersten Datensätze (vollständig) angezeigt werden. (Lernziel 3.4.5) - __[3&nbsp;Punkte]__
 
-```{r}
+```{r A-04}
+# lade die benötigten Pakete
+library(caret) # TODO: packages ergänzen
+library(dplyr)
+
+# lese die Trainingsdaten ein
+train_data <- read.csv('C:/Users/loren/Documents/Sonstiges/DAV/Spezialwissen ADS 3/Prüfung/ADS3_Immersion/Daten/cs_train_pk1.csv', header = TRUE, sep = "," , dec = ".", stringsAsFactors = TRUE)
+# TODO: File Path relativ angeben
+
+# Darstellung der ersten Datensätze
+head(train_data)
 
 ```
 
 
 ### A-05: Wie viele Schadenfälle und Merkmale hat der Datensatz? (Lernziele 3.3.1, 3.4.1) - __[1&nbsp;Punkt]__
 
-```{r}
+```{r A-05}
+anzahl_schadenfaelle <- dim(train_data)[1]
+anzahl_schadenfaelle
+anzahl_merkmale <- dim(train_data)[2]
+anzahl_merkmale
 
 ```
 
 
 ### A-06: Das Merkmal 'id' soll entfernt werden. Darüber hinaus ist zu prüfen, ob und wenn ja, wie viele Werte fehlen. Welche Schlussfolgerung ergibt sich daraus? (Lernziele 3.3.2, 3.4.4) - __[1&nbsp;Punkt]__
 
-```{r}
+```{r A-06}
+train_data <- train_data %>% dplyr::select(-"id")
+
+# Test, ob es fehlende Werte im Datensatz gibt  
+any(is.na(train_data))
 
 ```
-
+Es gibt keine fehlenden Werte im Trainingsdatensatz. Für den Trainingsdatensatz muss daher nicht entschieden werden wie mit fehlenden Werten umgegangen wird.
 
 # 2. Explorative Datenanalyse
 
