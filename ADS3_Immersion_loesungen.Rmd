@@ -118,27 +118,46 @@ Es findet insbesondere die DSGVO Anwendung.
 
 ### A-04: Bevor die eigentliche Verarbeitung beginnt, sollen die notwendigen Programmbibliotheken aufgerufen/importiert sowie der Datensatz aus der Datei `cs_train.csv` eingelesen und die ersten Datensätze (vollständig) angezeigt werden. (Lernziel 3.4.5) - __[3&nbsp;Punkte]__
 
-```{r A-04}
+Lösungsvorschlag A-04:
+
+Zuerst werden globale Einstellungen für das Markdown vorgenommen.
+
+```{r global settings}
 # Keine Warnings z.B. bei laden der Pakete im Output anzeigen
-knitr::opts_chunk$set(warning = FALSE, message = FALSE) # TODO: funktioniert bisher nicht
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+
+
+```
+
+
+```{r A-04}
+
 
 # lade die benötigten Pakete
 library(caret) # TODO: packages ergänzen
 library(dplyr)
 library(moments)
 library(purrr)
+library(PerformanceAnalytics)
+library(ggplot2)
+library(gridExtra)
 
 # lese die Trainingsdaten ein
-train_data <- read.csv('C:/Users/loren/Documents/Sonstiges/DAV/Spezialwissen ADS 3/Prüfung/ADS3_Immersion/Daten/cs_train_pk1.csv', header = TRUE, sep = "," , dec = ".", stringsAsFactors = TRUE)
-# TODO: File Path relativ angeben
+train_data <- read.csv("./Daten/cs_train_pk1.csv", header = TRUE, sep = "," , 
+                       dec = ".", stringsAsFactors = TRUE)
 
 # Darstellung der ersten Datensätze
 head(train_data)
 
 ```
 
+Der Datensatz verfügt über sehr viele (75) kategorielle Merkmale, die über Buchstaben codiert sind. Zudem bestehen zehn stetige Variablen, die anhand der ersten Werte bereits den Eindruck machen, dass sie normiert sind. Die Werte der Zielvariable loss, die angezeigt werden sind im mittleren 1000er Bereich.  
 
 ### A-05: Wie viele Schadenfälle und Merkmale hat der Datensatz? (Lernziele 3.3.1, 3.4.1) - __[1&nbsp;Punkt]__
+
+Lösungsvorschlag A-05:
+
+Über die Dimension des Datensatzes kann die Anzahl der Schadenfälle und Merkmale ermittelt werden.
 
 ```{r A-05}
 anzahl_schadenfaelle <- dim(train_data)[1]
@@ -147,9 +166,11 @@ anzahl_merkmale <- dim(train_data)[2]
 anzahl_merkmale
 
 ```
-
+Der Datensatz enthält `r anzahl_schadenfaelle` Schadenfälle und `r anzahl_merkmale` Merkmale.
 
 ### A-06: Das Merkmal 'id' soll entfernt werden. Darüber hinaus ist zu prüfen, ob und wenn ja, wie viele Werte fehlen. Welche Schlussfolgerung ergibt sich daraus? (Lernziele 3.3.2, 3.4.4) - __[1&nbsp;Punkt]__
+
+Lösungsvorschlag A-06:
 
 ```{r A-06}
 train_data <- train_data %>% dplyr::select(-"id")
@@ -165,6 +186,10 @@ Es gibt keine fehlenden Werte im Trainingsdatensatz. Für den Trainingsdatensatz
 ## 2.1. Explorative Datenanalyse der numerischen Merkmale
 
 ### A-07: Für numerischen Merkmalen des Datensatzes sind die Wertebereiche festzustellen. Existiert eine Verteilungsschiefe und wie sieht diese, falls vorhanden, aus? (Lernziele 3.3.2, 3.4.4) - __[5&nbsp;Punkte]__
+
+Lösungsvorschlag A-07:
+
+Zuerst werden zwei weitere Datensätze erstellt. Ein Datensatz mit numerischen und ein Datensatz mit kategoriellen Variablen. Der Datensatz mit den numerischen Variablen wird der Auggabenstellung entsprechend analysiert.
 
 ```{r A-07}
 # Aufteilung des Datensatzes in numerische und kategorielle Merkmale
@@ -184,9 +209,16 @@ Die Zielvariable `loss` weist eine starke Linksschiefe aus. Bei der Zielvariable
 
 ### A-08: Die Zielgröße soll geeignet logarithmisch transformiert werden. Wieso ist das nötig, bzw. sinnvoll? Welche Folgen kann diese Vorgehensweise auf die prognostizierten Werte haben? (Lernziele 3.3.2, 3.4.4) - __[5&nbsp;Punkte]__
 
+Lösungsvorschlag A-08:
+
+Da die Schiefe ungefähr dem Wert von *e* entspricht entscheide ich mich für den natürlichen Logarithmus. 
+
 ```{r A-08}
-# Transformation mit dem natürlichen Logarithmus
+# Transformation mit dem natürlichen Logarithmus 
+# (auch im ursprünglichen Datensatz "train_data")
 train_data_num$loss <- log(train_data_num$loss)
+train_data$loss <- log(train_data$loss)
+
 
 # Berechnung der Schiefe nach der Transformation
 skewness(train_data_num$loss)
@@ -197,39 +229,112 @@ boxplot(train_data_num$loss)
 ```
 Nach der logarithmischen Transformationen weist die Zielvariable nur noch eine geringe Schiefe auf und auch der Boxplot sieht gleichmäßig aus.
 
+TODO: recherchieren, warum man transformiert.
+
+Das Trainieren eines Modells auf den logarithmierten Werten liefert bei Anwendung des Modells zur Generierung von Vorhersagen natürlich auch logarithmierten Werte zurück. Die Prognosen müssen also noch entsprechen mit *e* skaliert werden, um die eigentlich gewünschten Vorhersagen zu erlangen. 
+
 ### A-09: Es soll im Folgenden die Verteilungsdichte der numerischen Merkmale visualisiert werden. Welche konzeptionellen Möglichkeiten dazu gibt es und wie unterscheiden sich diese? (Lernziele 3.3.2, 3.4.4) - __[5&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-09:
+
+Die Visualisierung erfolgt unter Verwendung des ggplot Pakets über Histogramme, beziehungsweise die aus den Werten abgeleiteten Verteilungsdichtewerten. Um einen for-loop zu vermeiden definiere ich eine Funktion, die ich dann vektorisiert auf alle Spalten anwende. 
+
+```{r A-09, fig.height = 3, fig.width = 5}
+# definiere die Funktion, die die Plots erstellt
+plot_num_spalte <- function(data, spalte){
+  ggplot(data, aes_string(x = spalte)) + 
+    geom_histogram(aes(y=..density..), bins = 50, colour = "blue", fill = "white") + 
+    geom_density(alpha = 0.2, fill = "deepskyblue4")
+}
+
+# Anwenden der Funktion
+plots_num <- lapply(colnames(train_data_num), plot_num_spalte, data = train_data_num)
+
+#Anzeigen der Plots
+gridExtra::marrangeGrob(plots_num, nrow = 2, ncol = 2)
 
 ```
+
+TODO: Interpretation der Plots
+
+Die Verteilungen wurden nur einzeln visualisiert. Weitere Möglichkeiten wäre die gemeinsame Verteilung zweier Variablen über Heat-Maps oder Scatterplots. 
+TODO: Weitere Möglichkeiten zur Visualisierung von Verteilungen 
 
 
 ### A-10: Im Weiteren soll die Korrelation zwischen den numerischen Merkmalen einschließlich 'loss' bestimmt werden. Dies ist auch in einer geeigneten Graphik darzustellen. Wieso ist die grafische Darstellung sinnvoll? Was sind die auffälligsten Zusammenhänge? (Lernziel 5.2.3) - __[5&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-10:
+
+```{r A-10}
+# Erzeugen des Korrelationsplots mit Hilfe des PerformanceAnaltics Packages
+# corr_plot <- PerformanceAnalytics::chart.Correlation(train_data_num, histogram = TRUE, 
+#                                                      method = "pearson", cex = 0.01)
+
 
 ```
-
+Aus der obigen Graphik sind die Pearson Korrelationen abzulesen. 
+TODO: Interpretation des plots
 
 ## 2.2. Explorative Datenanalyse der kategoriellen Merkmale
 
 ### A-11: Die Häufigkeitsverteilungen der kategoriellen Merkmale sind als Säulengraphiken darzustellen. Welche Schlussfolgerungen ergeben sich? (Lernziele 5.2.1, 6.1.2) - __[5&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-11:
+
+Ich erstelle zuerst wieder eine Funktion, mit dessen Hilfe ich für alle kategoriellen Merkmale das Säulendiagramm erstelle. Die in einer Liste gespeicherten Diagramme plotte ich anschließend.
+
+```{r A-11}
+# definiere die Funktion, die die Plots erstellt
+plot_cat_spalte <- function(data, spalte){
+  ggplot(data, aes_string(x = spalte)) + 
+    geom_bar() 
+}
+
+# Anwenden der Funktion
+plots_cat <- lapply(colnames(train_data_cat), plot_cat_spalte, data = train_data_cat)
+
+# Darstellen der Plots
+gridExtra::marrangeGrob(plots_cat, nrow = 4, ncol = 3)
+
+# alternative Darstellung
+# cowplot::plot_grid(plotlist = plots_cat, ncol = 5)
 
 ```
+
+61 kategorielle Variablen haben nur vier oder weniger Merkmalsausprägungen/Level. Allerdings sind bei vielen der Variablen die Merkmalsausprägungen sehr unterschiedlich verteilt. Beispielsweise existieren bei der Variable `cat4` nur sehr wenige Merkmale der Kategorie `B`. Einige Variablen verfügen über sehr viele verschiedene Level. Die verschiedenen Level können bei der Anwendung von One-Hot-encoding zu einer sehr hohen Anzahl an Dimensionen führen. Die Hohe Anzahl an Variablen erhöht die Rechenzeiten der Algorithmen und birgt die Gefahr schnell in Overfitting zu kommen.
 
 ### A-12: Welche Erkenntnisse können aus dem logarithmierten Schadenaufwand gezogen werden? Zudem sollen Boxplot-Diagramme für jedes Attribut der kategoriellen Merkmale dargestellt werden. Was ist daraus abzuleiten? (Lernziele 5.2.1, 6.1.2) - __[5&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-12:
 
+Ich erstelle zuerst wieder eine Funktion, mit dessen Hilfe ich für alle kategoriellen Merkmale einen Box mit dem logarithmierten Schadenaufwand als y-Wert erstelle. Die in einer Liste gespeicherten Diagramme plotte ich anschließend.
+
+```{r A-12}
+# definiere die Funktion, die die Plots erstellt
+plot_box_spalte <- function(data, spalte){
+  ggplot(data, aes_string(x = spalte, y = "loss")) + 
+    geom_boxplot() 
+}
+
+# Anwenden der Funktion auf die kategoriellen Merkmale
+plots_box <- lapply(colnames(train_data_cat), plot_box_spalte, data = train_data)
+
+
+# Darstellen der Plots
+gridExtra::marrangeGrob(plots_box, nrow = 3, ncol = 3)
 ```
+Da die logarithmische Transformation des Schadenaufwands nur die Höhe aber nicht die Ordnung/Reihenfolge der Werte. Der relative Einfluss (also die Richtung des Einflusses) der Merkmalsausprägungen von Variablen auf die Zielvariable kann also immer noch beobachtet werden. 
+
+Für einige Variablen, wie zum Beispiel `cat7` sind deutliche Unterschiede in der Höhe des logarithmierten Schadenaufwandes in Abhängigkeit der Merkmalsausprägung zu sehen. Dies ist in ähnlicher (wenn auch teils schwächerer) Form für viele weitere Variablen der Fall. Für einige andere Variablen wie `cat49` ist aus dem Boxplot kein Zusammenhang zwischen Merkmalsausprägung und Zielvariable zu sehen. (Hinweis: dies bedeutet aber nicht automatisch, dass die Variable nicht zu einer verbesserten Vorhersage beitragen kann.)
 
 ## 2.3. Daten für die Modellierung vorbereiten
 
 ### A-13: Der Zufallsgenerator soll sinnvoll und zielführend eingestellt werden. Welche Möglichkeiten zur Kontrolle des "Random State" gibt es dazu und wie wirken sie sich auf die Reproduzierbarkeit aus? (Lernziel 3.3.1, 3.4.1) - __[2&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-13:
+
+```{r A-13}
+seed = 12334567
 
 ```
 
@@ -237,14 +342,23 @@ Nach der logarithmischen Transformationen weist die Zielvariable nur noch eine g
 
 ### A-14: Zur sinnvollen Verwendung der kategoriellen Merkmale in Regressionsmodellen müssen diese (häufig) enkodiert werden. Es soll ein "One-Hot-Encoding" auf die kategoriellen Merkmale angewendet werden. Welche anderen Möglichkeiten des Encodings gibt es und wie unterscheiden sie sich bezüglich Praktikabilität und Performance? Welche möglichen Unterschiede zwischen den Trainings- und Testdaten sind hierbei zu beachten? (Lernziel 3.3.1, 3.4.1) - __[6&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-14:
+
+```{r A-14}
 
 ```
+
+Weitere Möglichkeiten des Encodings sind:
+* Target Encoding: Hierbei wird der kategoriellen Variable ein numerischer Wert in Abhängigkeit des Einflusses auf die Zielvariable zugewiesen. Dies sorgt teilweise zu besseren Modellqualitäten, allerdings ist die Gefahr groß bei nicht richtiger Anwendung zu overfitten.
+* **Weitere Encodings und Einfluss auf Praktikabilität und Performance**
+
+
+** Unterschiede zwischen Trainings- und Testdaten **
 
 
 ### A-15: Das Ergebnis des "One-Hot-Encoding" ist zu erläutern. Was sind die zu erwartenden Folgen? Treten hier Probleme hinsichtlich des "Curse of Dimensionality" auf? Welcher Art sind diese und welcher Umgang sollte damit getroffen werden? (Lernziel 5.1.1) - __[5&nbsp;Punkte]__
 
-
+Lösungsvorschlag A-15:
 
 ### A-16: Auf Basis der Trainingsdaten sind die üblichen ML-Matrizen X und y für das Modelltraining und für die Modellvalidierung zu erzeugen. (Lernziele 3.3.3, 3.4.5) - __[2&nbsp;Punkte]__
 
