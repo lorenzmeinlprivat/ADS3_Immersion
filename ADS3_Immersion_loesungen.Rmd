@@ -119,9 +119,14 @@ Es findet insbesondere die DSGVO Anwendung.
 ### A-04: Bevor die eigentliche Verarbeitung beginnt, sollen die notwendigen Programmbibliotheken aufgerufen/importiert sowie der Datensatz aus der Datei `cs_train.csv` eingelesen und die ersten Datensätze (vollständig) angezeigt werden. (Lernziel 3.4.5) - __[3&nbsp;Punkte]__
 
 ```{r A-04}
+# Keine Warnings z.B. bei laden der Pakete im Output anzeigen
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) # TODO: funktioniert bisher nicht
+
 # lade die benötigten Pakete
 library(caret) # TODO: packages ergänzen
 library(dplyr)
+library(moments)
+library(purrr)
 
 # lese die Trainingsdaten ein
 train_data <- read.csv('C:/Users/loren/Documents/Sonstiges/DAV/Spezialwissen ADS 3/Prüfung/ADS3_Immersion/Daten/cs_train_pk1.csv', header = TRUE, sep = "," , dec = ".", stringsAsFactors = TRUE)
@@ -161,16 +166,36 @@ Es gibt keine fehlenden Werte im Trainingsdatensatz. Für den Trainingsdatensatz
 
 ### A-07: Für numerischen Merkmalen des Datensatzes sind die Wertebereiche festzustellen. Existiert eine Verteilungsschiefe und wie sieht diese, falls vorhanden, aus? (Lernziele 3.3.2, 3.4.4) - __[5&nbsp;Punkte]__
 
-```{r}
+```{r A-07}
+# Aufteilung des Datensatzes in numerische und kategorielle Merkmale
+train_data_num <- train_data %>% dplyr::select_if(is.numeric)
+train_data_cat <- train_data %>% dplyr::select_if(is.factor)
+
+# die Wertebereiche sind aus dem Output der summary() Funktion zu lesen
+summary(train_data_num)
+
+# Berechnung der Verteilungsschiefe
+purrr::map_dbl(train_data_num, moments::skewness)
 
 ```
+Die Merkmale `cont1` bis `cont10` weisen teils positive und teils negative Werte auf, wobei die positiven Werte überwiegen und höher ausfallen. Positive Werte bedeuten eine linksschiefe Verteilung, negative Werte eine rechtsschiefe Verteilung. 
 
+Die Zielvariable `loss` weist eine starke Linksschiefe aus. Bei der Zielvariablen gibt es zudem einige sehr hohe Werte. Das Maximum ist beispielsweise um ein Vielfaches höher als Mittelwert und 75% Quantil.
 
 ### A-08: Die Zielgröße soll geeignet logarithmisch transformiert werden. Wieso ist das nötig, bzw. sinnvoll? Welche Folgen kann diese Vorgehensweise auf die prognostizierten Werte haben? (Lernziele 3.3.2, 3.4.4) - __[5&nbsp;Punkte]__
 
-```{r}
+```{r A-08}
+# Transformation mit dem natürlichen Logarithmus
+train_data_num$loss <- log(train_data_num$loss)
+
+# Berechnung der Schiefe nach der Transformation
+skewness(train_data_num$loss)
+
+# Boxplot der transformierten Zielvariable
+boxplot(train_data_num$loss)
 
 ```
+Nach der logarithmischen Transformationen weist die Zielvariable nur noch eine geringe Schiefe auf und auch der Boxplot sieht gleichmäßig aus.
 
 ### A-09: Es soll im Folgenden die Verteilungsdichte der numerischen Merkmale visualisiert werden. Welche konzeptionellen Möglichkeiten dazu gibt es und wie unterscheiden sich diese? (Lernziele 3.3.2, 3.4.4) - __[5&nbsp;Punkte]__
 
