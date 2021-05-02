@@ -141,6 +141,11 @@ library(purrr)
 library(PerformanceAnalytics)
 library(ggplot2)
 library(gridExtra)
+library(ranger)
+library(lightgbm)
+library(catboost)
+library(glmnet)
+library(MLmetrics)
 
 # lese die Trainingsdaten ein
 train_data <- read.csv("./Daten/cs_train_pk1.csv", header = TRUE, sep = "," , 
@@ -239,7 +244,7 @@ Lösungsvorschlag A-09:
 
 Die Visualisierung erfolgt unter Verwendung des ggplot Pakets über Histogramme, beziehungsweise die aus den Werten abgeleiteten Verteilungsdichtewerten. Um einen for-loop zu vermeiden definiere ich eine Funktion, die ich dann vektorisiert auf alle Spalten anwende. 
 
-```{r A-09, fig.height = 3, fig.width = 5}
+```{r A-09}
 # definiere die Funktion, die die Plots erstellt
 plot_num_spalte <- function(data, spalte){
   ggplot(data, aes_string(x = spalte)) + 
@@ -323,7 +328,7 @@ plots_box <- lapply(colnames(train_data_cat), plot_box_spalte, data = train_data
 # Darstellen der Plots
 gridExtra::marrangeGrob(plots_box, nrow = 3, ncol = 3)
 ```
-Da die logarithmische Transformation des Schadenaufwands nur die Höhe aber nicht die Ordnung/Reihenfolge der Werte. Der relative Einfluss (also die Richtung des Einflusses) der Merkmalsausprägungen von Variablen auf die Zielvariable kann also immer noch beobachtet werden. 
+Die logarithmische Transformation des Schadenaufwands ändert nur die Höhe aber nicht die Ordnung/Reihenfolge der Werte. Der relative Einfluss (also die Richtung des Einflusses) der Merkmalsausprägungen von Variablen auf die Zielvariable kann also immer noch, wenn auch anders skaliert, beobachtet werden. 
 
 Für einige Variablen, wie zum Beispiel `cat7` sind deutliche Unterschiede in der Höhe des logarithmierten Schadenaufwandes in Abhängigkeit der Merkmalsausprägung zu sehen. Dies ist in ähnlicher (wenn auch teils schwächerer) Form für viele weitere Variablen der Fall. Für einige andere Variablen wie `cat49` ist aus dem Boxplot kein Zusammenhang zwischen Merkmalsausprägung und Zielvariable zu sehen. (Hinweis: dies bedeutet aber nicht automatisch, dass die Variable nicht zu einer verbesserten Vorhersage beitragen kann.)
 
@@ -332,6 +337,8 @@ Für einige Variablen, wie zum Beispiel `cat7` sind deutliche Unterschiede in de
 ### A-13: Der Zufallsgenerator soll sinnvoll und zielführend eingestellt werden. Welche Möglichkeiten zur Kontrolle des "Random State" gibt es dazu und wie wirken sie sich auf die Reproduzierbarkeit aus? (Lernziel 3.3.1, 3.4.1) - __[2&nbsp;Punkte]__
 
 Lösungsvorschlag A-13:
+
+** Möglickeiten zur Kontrolle des RAndom State ** 
 
 ```{r A-13}
 seed = 12334567
@@ -345,12 +352,21 @@ seed = 12334567
 Lösungsvorschlag A-14:
 
 ```{r A-14}
+# ich benutze das caret package
+# fullrank = True sorgt dafür, dass bei eine Variable mit 2 Kategorieien nur eine Variable zum encoden
+# verwendet wird und somit keine lineare Abhängigkeiten generiert werden
+dummy <- caret::dummyVars(" ~ . ", data = train_data_cat, fullRank = TRUE)
+train_data_cat_encoded <- data.frame(predict(dummy, newdata = train_data_cat))
 
 ```
 
 Weitere Möglichkeiten des Encodings sind:
-* Target Encoding: Hierbei wird der kategoriellen Variable ein numerischer Wert in Abhängigkeit des Einflusses auf die Zielvariable zugewiesen. Dies sorgt teilweise zu besseren Modellqualitäten, allerdings ist die Gefahr groß bei nicht richtiger Anwendung zu overfitten.
-* **Weitere Encodings und Einfluss auf Praktikabilität und Performance**
+
+* Label Encoding: Die Kategorien der Vairable werden durch Nummern von 1 bis n ersetzt, wobei n die Anzahl der verschiedenen Kategorien der Variable sind. Ein Nachteil hierbei ist, dass Label Encoding meistens nicht passend für lineare Modelle ist.
+
+* Frequency Encoding: Die Kategorien werden mit dem Anteil der Beobachtungen der jeweiligen Kategorie an den Gesamtbeobachtungen ersetzt. Wenn eine Kategorie also in 15 % der Beobachtungen vorkommt wird die Kategorie durch den Wert 0,15 ersetzt. Ein Nachteil hierbei ist, dass Kategorien mit der gleichen Anzahl an Beobachtungen mit dem gleichen Wert encoded werden und so womöglich ihre nützliche Information verlieren.  
+
+* Target Encoding (auch Mean Encoding genannt): Hierbei wird der kategoriellen Variable ein numerischer Wert in Abhängigkeit des Einflusses auf die Zielvariable zugewiesen. Dies sorgt teilweise zu besseren Modellqualitäten, allerdings ist die Gefahr groß bei nicht richtiger Anwendung zu overfitten.
 
 
 ** Unterschiede zwischen Trainings- und Testdaten **
@@ -360,9 +376,25 @@ Weitere Möglichkeiten des Encodings sind:
 
 Lösungsvorschlag A-15:
 
+Die verschiedenen n Katgegorien einer Variable werden auf (n-1) Spalten aufgeteilt und die Ausprägung mit 0-1 encoded. Dieses Vorgehen wurde für alle kategoriellen Variablen durchgeführt. Dadurch erhöht sich die Dimension des Datensatz von 75 auf 296 Spalten. "Curse of Dimensionality" beschreibt, dass eine steigende Anzahl an Variablen senkt die "Datendichte" und es wird schwieriger für Modelle die tatsächlichen Zusammenhänge in den Daten von Zufällen zu unterscheiden.
+
+Als Umgang bezüglich des "Curse of Dimensionality" könnte eine Dimensionsreduktion, zum Beispiel über eine Hauptkomponentenanalyse durchgeführt werden. Diese reduziert die Anzahl der Dimensionen unter Beibehaltung der meisten Informationen des Datensatzes.
+
 ### A-16: Auf Basis der Trainingsdaten sind die üblichen ML-Matrizen X und y für das Modelltraining und für die Modellvalidierung zu erzeugen. (Lernziele 3.3.3, 3.4.5) - __[2&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-16:
+
+```{r A-16}
+# Zielvariable y "loss"
+y <- train_data_num$loss
+
+# Feature Matrix ohne loss
+X_matrix <- cbind(train_data_cat_encoded, 
+                  dplyr::select(train_data_num, - loss))
+
+# einige algorithmen nehmen X und y zusammen in eine matrix
+Xy_matrix <- cbind(train_data_cat_encoded, 
+                  train_data_num)
 
 ```
 
@@ -371,9 +403,32 @@ Lösungsvorschlag A-15:
 
 ### A-17: Es sollen Datenstrukturen vorbereitet werden, die einen komfortablen Vergleich der Modelle und Ergebnisse erleichtern. Worauf gilt es hierbei zu achten und welche Aspekte sind in Bezug auf die Gütemaße bereits vor der Modellierung zu überlegen? Welche Vor- und Nachteile hat das vorgegebene Gütemaß mittlerer absoluter Fehler (MAE) im Vergleich zum mittleren quadratischen Fehler (MSE) im Hinblick auf die Vorhersagegenauigkeit auf individueller Ebene sowie die Erwartungstreue des Schätzers? (Lernziel 4.1.7) - __[5&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-17:
+
+Zur Bewertung der Algorithmen teile ich den Datensatz in Trainings- und Validierungsdatensatz auf.
+
+Ich definiere eine Funktion, die mir für Vektoren und Vorhersagen verschiedene Metriken zurückgibt, die ich zur Evaluation der Algorithmen verwende. Ein Kriterium davon ist MAE, da unterschiedliche Modelle bei unterschiedlichen Kriterien unterschiedlich abschneiden können, verwende ich zusätzlich noch RMSE, Gini und R^2.
+
+** Aufteilen, damit man einen extra VAlidierungsdatensatz hat? **
+
+```{r A-17}
+# Aufteilung in Trainings- und Validierungsdatensatz
+# TODO
+
+# definiere die Funktion
+evaluation = function(y_pred, y_true){
+  MAE = MLmetrics::MAE(y_pred = y_pred, y_true = y_true)
+  gini_coefficient = MLmetrics::NormalizedGini(y_pred = y_pred, y_true = y_true)
+  RMSE = MLmetrics::RMSE(y_pred = y_pred, y_true = y_true)
+  R2 = MLmetrics::R2_Score(y_pred, y_true)
+  eval_metric = matrix(c(MAE, RMSE, gini_coefficient, R2), nrow=1, ncol=4, 
+                       dimnames = list("Value", c("MAE", "RMSE", "gini", "R2")))
+  return(eval_metric)
+}
 
 ```
+
+** Beantwortung der Fragen **
 
 ## 3.1. Entscheidungsbaumbasierte Modellensembles
 
@@ -381,13 +436,93 @@ Lösungsvorschlag A-15:
 
 ### A-18: Zunächst soll das Random-Forest-Verfahren verwendet werden. Es sollen die Hyperparameter Baumtiefe und Baumanzahl über eine Gittersuche bestimmt werden. Was sind Hyperparameter, was ist ihre Bedeutung? (Lernziele 4.1.3, 4.1.4) - __[10&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-18:
+
+Ich verwende das Package `ranger` Package. `ranger` hat den Vorteil, dass es schneller ist als die meisten anderen Random Forest Packages. 
+
+Ich erstelle einen Grid mit verschiedenen Parameterkombinationen und trainiere für jede Kombination ein Modell. Die Modelle bewerte ich anhand des Fehlers der Out-of-bag predictions mit dem MAE Kriterium.
+
+```{r A-18}
+# definiere grid
+my_grid <- expand.grid(
+  num.trees = c(70, 100, 200),
+  max.depth = c(1, 3, 5, 7),
+  mae = NA
+)
+
+# Anzahl der Variablen
+n_features <- dim(X_matrix)[2]
+
+set.seed(seed)
+ptm <- proc.time() # TODO: zeit anders stoppen
+# loop durch die grid parameter Optionen
+# erzeuge ein Modell je Kombinationsmöglichkeit
+for (i in seq_len(nrow(my_grid))){
+  
+  model_rf <- ranger::ranger(
+  loss ~ .,
+  data = Xy_matrix,
+  
+  # loop durch die grid parameter Optionen
+  num.trees = my_grid$num.trees[i],
+  max.depth = my_grid$max.depth[i],
+  
+  # empfohlene Parametereinstellung für Regression
+  mtry = floor(n_features / 3),
+  
+  # Berechnung der Variable Importance
+  importance = 'impurity'
+  
+  )
+  
+  # speichern der out-of-bag prediction fehler
+  my_grid$mae[i] <- model_rf$prediction.error
+  
+}
+
+time_rf <- proc.time() - ptm
+
+# sortieren der Modelle nach MAE und anzeigen der Werte
+sorted_grid <- my_grid %>% arrange(mae) 
+sorted_grid 
+
+# Ich trainiere erneute das Beste Modell und Speichere es
+model_rf <- ranger::ranger(
+  loss ~ .,
+  data = Xy_matrix,
+  num.trees = sorted_grid$num.trees[1],
+  max.depth = sorted_grid$max.depth[1],
+  mtry = floor(n_features / 3),
+  importance = 'impurity'
+  )
+
 
 ```
 
+** Hyperparamter und Ihre Bedeutung **
+
 ### A-19: Die Variablen-Importance (Z. 4.1.4) soll berechnet werden und Auskunft über die Eigenschaften des trainierten Lerners geben. Welche Möglichkeiten zur Berechnung und Visualisierung am Beispiel des Random-Forest sind hier zielführend? (Lernziel 4.1.4) - __[8&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-19:
+
+** Noch auf Fragen eingehen **
+
+```{r A-19}
+# extrahieren der Variable importance aus dem Model und Sortierung der Werte 
+var_imp_sorted <- as.data.frame(sort(model_rf$variable.importance, decreasing = TRUE))
+var_imp_sorted <- tibble::rownames_to_column(var_imp_sorted, "Variable")
+var_imp_sorted <- dplyr::rename(var_imp_sorted, 
+                                "Importance" = "sort(model_rf$variable.importance, decreasing = TRUE)" )
+
+# Anzeigen der 20 wichtigsten Merkmale
+head(var_imp_sorted, 20)
+
+# Visualisierung über einen gedrehten Bar Chart
+varImpPlot <- ggplot(head(var_imp_sorted, 20), 
+                     aes(x = Importance, y = reorder(Variable, Importance))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  xlab("Variable Importance")
+varImpPlot
 
 ```
 
@@ -395,13 +530,27 @@ Lösungsvorschlag A-15:
 
 ### A-20: Die hinter den Gradient-Boosting-Tools lightGBM, XGBoost und CatBoost stehende Methodik ist zu beschreiben. Welche Unterschiede, Vor- und Nachteile lassen sich identifizieren? Welches Konzept eignet sich im vorliegenden Fall? (Lernziele 3.2.1, 4.1.7) - __[8&nbsp;Punkte]__
 
+Lösungsvorschlag A-20:
+
+lightGBM zeichnet sich durch schnellere Trainingszeiten und weniger Speicherverbrauch aus. Es daher schneller als die meisten anderen Boosting Algorithmen und auch für große Datensätze geeignet. 
+
+XGBoost hat die größte Community. XGBoost hat keine inbuilt Methode für den Umgang mit kategoriellen Variablen. Das encoding muss daher vom Anwender selbst vorab vorgenommen werden.
+
+CatBoost ist mit Lizenz und hat eine automatische Unterstützung kategorieller Variablen. 
+
+Da wir einen Datensatz mit sehr vielen verschiedenen Merkmalen haben eignet sich lightGBM, da dieser Algorithmus typischerweise der schnellste ist.
+
 ```{r}
 
 ```
 
+** Warum ist ein Code Block hier? **
+
 ### A-21: Es ist eine Hyperparameteroptimierung über eine mehrdimensionale "Randomized Search" für lightGBM durchzuführen. (Lernziele 3.2.1, 4.1.7) - __[8&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-21:
+
+```{r A-21}
 
 ```
 
@@ -415,13 +564,23 @@ Lösungsvorschlag A-15:
 
 ### A-23: Es soll Catboost mit Default-Werten angewendet werden. (Lernziele 3.2.1, 4.1.7) - __[4&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-23:
 
+```{r A-23, message=FALSE}
+# Data Set vorbereiten
+train_pool <- catboost.load_pool(data = X_matrix, label = y)
+
+# trainieren des Modells
+dummy <- capture.output({
+  model_catboost <- catboost.train(learn_pool = train_pool)
+})
 ```
 
 ### A-24: Es sind die Ergebnisse und Laufzeiten von A-21 bis A-23 zu vergleichen und zu bewerten. (Lernziele 3.2.1, 4.1.7) - __[4&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-24:
+
+```{r A-24}
 
 ```
 
@@ -435,7 +594,9 @@ Lösungsvorschlag A-15:
 
 ### 3.2.1 Datenaufbereitung
 
-```{r}
+** Soll ich die Daten normieren? **
+
+```{r Normierung Datensatz}
 
 ```
 
@@ -443,26 +604,80 @@ Lösungsvorschlag A-15:
 
 ### A-26: Es sind die Gemeinsamkeiten und der Unterschied zwischen den Verfahren Ridge-Regression und Lasso-Regression zu erläutern. Das Lasso-Verfahren soll auf den Daten für verschiedene Komplexitätsvorgaben (via Penalty-Parameter) sachgerecht angewendet und die Ergebnisse interpretiert werden. Es soll gezeigt werden, wie sich in Abhängigkeit vom Penalty-Parameter der Messfehler an der Validierungsstichprobe entwickelt und wie sich dabei die Anzahl der vom Modell nicht berücksichtigten Merkmale (also mit Koeffizient=0) in Abhängigkeit vom Penalty-Parameter verändert. (Lernziel 4.1.2) - __[10&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-26:
+
+```{r A-26}
+# ich trainiere das Modell
+# alpha=1 gibt einem die Lasso-Regression 
+# 10 fache Kreuzvalidierung zur Bestimmung des Vorhersagefehlers
+set.seed(seed)
+model_lasso <- cv.glmnet(
+  x = as.matrix(X_matrix),
+  y = y,
+  family = "gaussian",
+  alpha = 1,
+  standardize = TRUE,
+  nfolds = 10
+)
+
+# plot der mittleren quadratischer Abweichung in Abhängigkeit von lambda
+plot(model_lasso)
+
+# erzeugen eines data frames der die Anzahl der Koeffizient mit Wert 0 in Abhängigkeit von 
+# log lambda angibt
+coef_zero <- cbind(log(model_lasso$lambda), dim(X_matrix)[2] - model_lasso$nzero)
+plot(coef_zero, xlab = "log lambda", ylab = "Number of coefficients being zero")
+
+# plot der Koeffizienten in Abhängigkeit von Lambda
+# plot(model_lasso, xvar = "lambda")
+
+# generiere Vorhersagen auf dem Validierungsdatensatz
+# pred_cv <- predict(model_lasso, newx = as.matrix(X_matrix), s = c(0.01, 0.1), type = "response")
 
 ```
 
+Sowohl bei der Ridge-Regression, als auch bei Lasso-Regression wird der Verlustfunktion ein Bestrafungsterm hinzugefügt der die Modellkomplexität bestraft und so die Modellkomplexität kontrollieren soll. Beide Bestrafungsterme ergeben sich in Abhängigkeit der Höhe der im Modell verwendeten Koeffizienten. Bei der Lasso-Regression wird die Summe des Betrags der Koeffizienten (also die L-1 Norm), bei der Ridge-Regression wird die Summe der Quadrats der Koeffizienten (also die L-2 Norm) als Bestrafungsterm verwendet. Das Ausmaß des Bestrafungsterms wird über einen Komplexitätsparameter lambda bestimmt. Bei Lasso schrumpfen die Koeffizienten bei größerem lambda linear gegen 0, so dass die Merkmale komplett aus dem Modell verschwinden. Es findet also eine Variablenselektion statt. Bei Ridge werden die Koeffizienten mit wachsendem lambda zwar kleiner, werden aber selten 0.
+
+Die mittlere quadratische Abweichung verläuft mit steigendem log-lambda zuerst relativ konstant bevor sie dann steil ansteigt. Die Anzahl der Koeffizienten die Null sind nimmt dagegen mit steigendem log-lambda auch bereits zu Beginn zu. Es können, bei der passenden Wahl von lambda, zum Beispiel bei dem größten lambda das innerhalb einer Standardabweichung des besten Modells liegt, die Anzahl der Modellparameter und damit die Modellkomplexität deutlich reduziert werden, ohne dass die Vorhersagegenauigkeit des Modells (wesentlich) verschlechtert wird.
 
 ### 3.2.3 Das Elastic-Net-Verfahren
 
 ### A-27: Als abschließendes lineares Modell soll das Elastic-Net-Verfahren sachgerecht angewendet werden. Wie hängt dieses mit der Ridge-Regression und LASSO-Regression zusammen? Auch hier sollen die Hyperparameter über eine mehrdimensionale "Randomized Search" bestimmt werden. Welche Vor- und Nachteile hat dieses Vorgehen gegenüber anderen Optimierungsverfahren und welche Implikationen ergeben sich für die praktische Anwendbarkeit? (Lernziel 4.1.2) - __[10&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-27:
+
+```{r A-27}
+# TODO : randomized search über
+# alpha
+# lambda 1 ?
+# lambda 2 ?
+set.seed(seed)
+model_glmnet <- cv.glmnet(
+  x = as.matrix(X_matrix),
+  y = y,
+  family = "gaussian",
+  alpha = 0.5,
+  standardize = TRUE,
+  nfolds = 10
+)
+
 
 ```
+
+Das Elastic-Net ist eine Kombination aus Ridge-Regression und Lasso-Regression. Beide Bestrafungsterme werden hinzugefügt und mit einem zusätzliche Parameter `alpha` gewichtet. Über die passende Kalibrerung von `alpha` können so also die Vorteile der beiden Verfahren kombiniert werden.
+
 
 ## 3.3. Vorwärtsgerichtetes Neuronales Netz mit Keras/TensorFlow
 
 ### A-28: Als letztes Modell wird ein vorwärtsgerichtetes künstliches neuronales Netz (MLP) herangezogen, das mit Keras/Tensorflow mit zwei bis drei verborgenen Schichten mit mindestens 35.000 zu trainierenden Gewichten sowie dropout-Regularisierung zu implementieren ist. Die gewählte Startarchitektur, die Optimierungsstrategie sowie der Umgang mit „Over-Fitting“ und schwankenden Prognoseergebnissen sollen erläutert werden. 
 
+Lösungsvorschlag A-28:
+
 ### Die als optimal erachtete finale Netzarchitektur soll insgesamt drei Mal vollständig neu (d.h. Definition, Initialisierung & Zufallszahlen, Kompilierung, Ausführung, Evaluierung) im Notebook nacheinander angewandt und die Validierungsergebnisse angezeigt werden. Die erzielte Modellgüten und deren Varianz sollen insbesondere mit den Ergebnissen der Gradient-Boosting-Verfahren verglichen und unter Einbeziehung des Modellierungsaufwands eine vergleichende Bewertung sowie eine abschließende Modellempfehlung dokumentiert werden. (Lernziele 3.2.2, 4.1.7, 4.3.1) - __[20&nbsp;Punkte]__
 
-```{r}
+Lösungsvorschlag A-29:
+
+```{r A-29}
 
 ```
 
